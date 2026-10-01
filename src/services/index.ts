@@ -50,6 +50,9 @@ export type {
   CreateClinicalVisitPayload,
 } from '@/services/clinical-visits.service'
 
+export { googleCalendarService } from '@/services/google-calendar.service'
+export type { GoogleCalendarStatus } from '@/services/google-calendar.service'
+
 export { telehealthService, telehealthAppointmentFromPatient, normalizeTelehealthStatus } from '@/services/telehealth.service'
 export type {
   TelehealthAppointment,

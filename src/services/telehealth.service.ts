@@ -134,14 +134,94 @@ export function telehealthStatusLabel(value: string | null | undefined): string 
   return value?.trim() || '—'
 }
 
-export function canJoinTelehealth(status: string | null | undefined, meetingLink?: string | null): boolean {
-  if (!meetingLink?.trim()) return false
-  const key = normalizeTelehealthStatus(status)
-  return key !== 'CANCELLED' && key !== 'COMPLETED'
+/** Late window matches the backend default. The Meet URL itself is never built here. */
+const JOIN_LATE_MINUTES = 30
+
+/**
+ * True only for an https://meet.google.com meeting URL from the backend.
+ * App routes such as /telehealth/{token} are not meeting URLs.
+ */
+export function isGoogleMeetLink(value: string | null | undefined): value is string {
+  if (typeof value !== 'string') return false
+  let parsed: URL
+  try {
+    parsed = new URL(value.trim())
+  } catch {
+    return false
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'meet.google.com') return false
+  if (parsed.username || parsed.password) return false
+  const segments = parsed.pathname.split('/').map((segment) => segment.trim().toLowerCase()).filter(Boolean)
+  if (segments.length === 0 || segments.includes('telehealth')) return false
+  const haystack = parsed.pathname.toLowerCase()
+  return !['mock', 'dummy', 'localhost', '127.0.0.1'].some((marker) => haystack.includes(marker))
 }
 
 export function isAppMeetingLink(link: string): boolean {
   return /\/telehealth\/[^/?#\s]+/i.test(link)
+}
+
+export function isTelehealthJoinExpired(
+  appointment: {
+    appointmentDate?: string | null
+    appointmentTime?: string | null
+    durationMinutes?: number | null
+  },
+  now: Date = new Date(),
+): boolean {
+  const day = appointment.appointmentDate?.match(/^\d{4}-\d{2}-\d{2}/)?.[0]
+  const time = toStartTime(appointment.appointmentTime ?? '')
+  if (!day || !time) return false
+  const [year, month, date] = day.split('-').map(Number)
+  const [hour, minute] = time.split(':').map(Number)
+  const start = new Date(year, month - 1, date, hour, minute, 0, 0)
+  const duration = appointment.durationMinutes && appointment.durationMinutes > 0
+    ? appointment.durationMinutes
+    : TELEHEALTH_DURATION_MINUTES
+  const closes = start.getTime() + (duration + JOIN_LATE_MINUTES) * 60_000
+  return now.getTime() > closes
+}
+
+export function telehealthJoinBlockReason(input: {
+  status?: string | null
+  meetingLink?: string | null
+  appointmentDate?: string | null
+  appointmentTime?: string | null
+  durationMinutes?: number | null
+}): string | null {
+  const status = normalizeTelehealthStatus(input.status)
+  if (status === 'CANCELLED') return 'This appointment has been cancelled.'
+  if (status === 'COMPLETED') return 'This consultation can no longer be joined.'
+  if (!isGoogleMeetLink(input.meetingLink)) {
+    return 'Google Meet link is not available for this appointment.'
+  }
+  if (isTelehealthJoinExpired(input)) return 'This consultation is outside the allowed joining window.'
+  return null
+}
+
+export function canJoinTelehealth(
+  status: string | null | undefined,
+  meetingLink?: string | null,
+  schedule?: {
+    appointmentDate?: string | null
+    appointmentTime?: string | null
+    durationMinutes?: number | null
+  },
+): boolean {
+  return telehealthJoinBlockReason({
+    status,
+    meetingLink,
+    appointmentDate: schedule?.appointmentDate,
+    appointmentTime: schedule?.appointmentTime,
+    durationMinutes: schedule?.durationMinutes,
+  }) == null
+}
+
+/** Opens the backend Meet URL. Returns false when the link is missing or not a Google Meet URL. */
+export function openGoogleMeet(meetingLink: string | null | undefined): boolean {
+  if (!isGoogleMeetLink(meetingLink)) return false
+  window.open(meetingLink.trim(), '_blank', 'noopener,noreferrer')
+  return true
 }
 
 export function formatTelehealthDate(value: string): string {
@@ -162,7 +242,7 @@ export function telehealthAppointmentFromPatient(patient: Patient): TelehealthAp
   const time = toStartTime(patient.appointmentTime ?? '') ?? patient.appointmentTime?.trim() ?? ''
   const link = patient.roomUrl?.trim() || ''
   return {
-    id: patient.appointmentId?.trim() || patient.id,
+    id: patient.appointmentId?.trim() || '',
     patientId: patient.id,
     doctorId: doctor?.id ?? '',
     patientName: patient.fullName,
@@ -173,7 +253,7 @@ export function telehealthAppointmentFromPatient(patient: Patient): TelehealthAp
     appointmentTime: time,
     durationMinutes: patient.durationMin ?? TELEHEALTH_DURATION_MINUTES,
     status: normalizeTelehealthStatus(patient.visitStatus) || normalizeTelehealthStatus(patient.status),
-    meetingLink: link || undefined,
+    meetingLink: isGoogleMeetLink(link) ? link.trim() : undefined,
     doctorName: doctor?.name ?? '',
     doctorSpecialization: doctor?.specialty?.trim() || patient.department?.name || undefined,
   }
@@ -351,12 +431,56 @@ export function rescheduleFailureMessage(error: unknown): string {
   if (code === 'APPOINTMENT_CANCELLED') return RESCHEDULE_MESSAGES.APPOINTMENT_CANCELLED
   if (code === 'PAST_TIME') return RESCHEDULE_MESSAGES.PAST_TIME
   if (code === 'UNAUTHORIZED') return RESCHEDULE_MESSAGES.UNAUTHORIZED
+  if (`${error.message ?? ''}`.toLowerCase().includes('completed')) {
+    return 'Completed appointments cannot be rescheduled.'
+  }
   return RESCHEDULE_MESSAGES.GENERIC
+}
+
+const CANCEL_MESSAGES = {
+  ALREADY: 'This appointment is already cancelled.',
+  NOT_FOUND: 'Appointment could not be found.',
+  UNAUTHORIZED: 'You do not have permission to cancel this appointment.',
+  GENERIC: 'Unable to cancel the appointment. Please try again.',
+} as const
+
+export function cancelFailureMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return CANCEL_MESSAGES.GENERIC
+  if (error.status === 401) return 'Session expired. Please login again.'
+  if (error.status === 403) return CANCEL_MESSAGES.UNAUTHORIZED
+  if (error.status === 404) return CANCEL_MESSAGES.NOT_FOUND
+  const text = `${error.message ?? ''}`.toLowerCase()
+  if (text.includes('already cancelled')) return CANCEL_MESSAGES.ALREADY
+  if (error.status === 0 || error.status >= 500) return CANCEL_MESSAGES.GENERIC
+  return error.message?.trim() || CANCEL_MESSAGES.GENERIC
 }
 
 export function telehealthErrorMessage(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback
   const text = `${error.message ?? ''} ${error.payload ? JSON.stringify(error.payload) : ''}`.toLowerCase()
+  if (
+    text.includes('connect google calendar')
+    || text.includes('no longer connected')
+    || text.includes('authorization expired')
+    || text.includes('google calendar permission')
+  ) {
+    return 'Google Calendar is not connected. Connect it in Settings before scheduling a telehealth appointment.'
+  }
+  if (text.includes('could not be created') || text.includes('meet link could not')) {
+    return 'Google Meet link could not be created. Please try again.'
+  }
+  if (text.includes('meet link is not available') || text.includes('meeting link is not available')) {
+    return 'Google Meet link is not available for this appointment.'
+  }
+  if (text.includes('outside the allowed joining window')) {
+    return 'This consultation is outside the allowed joining window.'
+  }
+  if (text.includes('can no longer be joined')) {
+    return 'This consultation can no longer be joined.'
+  }
+  if (text.includes('already cancelled') || text.includes('has been cancelled')) {
+    return 'This appointment has been cancelled.'
+  }
   if (text.includes('not available') || text.includes('unavailable') || text.includes('occupied') || text.includes('conflict')) {
     return 'Doctor is not available at this time.'
   }
@@ -390,17 +514,17 @@ function mapMeeting(value: unknown, meetingToken: string): TelehealthMeeting | n
     ?? pickString(nested, 'patient_name', 'patientName')
     ?? pickString(source, 'patient_name', 'patientName')
   if (!patientName) return null
-  const date = pickString(nested, 'appointment_date', 'appointmentDate', 'visit_date', 'visitDate')
-    ?? pickString(source, 'appointment_date', 'appointmentDate')
+  const date = pickString(nested, 'appointment_date', 'appointmentDate', 'visit_date', 'visitDate', 'date')
+    ?? pickString(source, 'appointment_date', 'appointmentDate', 'date')
     ?? ''
   const time = toStartTime(
-    pickString(nested, 'appointment_time', 'appointmentTime', 'start_time', 'startTime')
-    ?? pickString(source, 'appointment_time', 'appointmentTime')
+    pickString(nested, 'appointment_time', 'appointmentTime', 'start_time', 'startTime', 'time')
+    ?? pickString(source, 'appointment_time', 'appointmentTime', 'time')
     ?? '',
   ) ?? ''
-  const link = pickString(nested, 'meeting_link', 'meetingLink', 'session_url', 'sessionUrl')
-    ?? pickString(source, 'meeting_link', 'meetingLink', 'session_url', 'sessionUrl')
-    ?? undefined
+  const rawLink = pickString(nested, 'meeting_link', 'meetingLink')
+    ?? pickString(source, 'meeting_link', 'meetingLink')
+  const link = isGoogleMeetLink(rawLink) ? rawLink.trim() : undefined
   const doctorName = (doctor ? pickString(doctor, 'name', 'full_name', 'fullName') : null)
     ?? pickString(nested, 'doctor_name', 'doctorName')
     ?? ''
@@ -421,6 +545,79 @@ function mapMeeting(value: unknown, meetingToken: string): TelehealthMeeting | n
     appointmentTime: time,
     status: normalizeTelehealthStatus(pickString(nested, 'status', 'consultation_status', 'consultationStatus') ?? pickString(source, 'status')),
     meetingLink: link,
+  }
+}
+
+function mapTelehealthDetails(value: unknown, fallbackId?: string): TelehealthAppointment | null {
+  const source = asRecord(value)
+  if (!source) return null
+  const nested = asRecord(source.telehealth_appointment)
+    ?? asRecord(source.telehealthAppointment)
+    ?? asRecord(source.appointment)
+    ?? asRecord(source.consultation)
+    ?? source
+  const patient = asRecord(nested.patient) ?? asRecord(source.patient)
+  const doctor = asRecord(nested.doctor) ?? asRecord(source.doctor)
+  const id = pickString(nested, 'appointment_id', 'appointmentId', 'id')
+    ?? (nested === source ? null : pickString(source, 'appointment_id', 'appointmentId'))
+    ?? (fallbackId?.trim() || null)
+  if (!id) return null
+  const rawLink = pickString(nested, 'meeting_link', 'meetingLink')
+    ?? pickString(source, 'meeting_link', 'meetingLink')
+  const date = pickString(nested, 'appointment_date', 'appointmentDate', 'date', 'visit_date', 'visitDate')
+    ?? pickString(source, 'appointment_date', 'appointmentDate', 'date')
+    ?? ''
+  const time = toStartTime(
+    pickString(nested, 'appointment_time', 'appointmentTime', 'time', 'start_time', 'startTime')
+    ?? pickString(source, 'appointment_time', 'appointmentTime', 'time')
+    ?? '',
+  ) ?? ''
+  const patientName = (patient ? pickString(patient, 'full_name', 'fullName', 'name') : null)
+    ?? pickString(nested, 'patient_name', 'patientName')
+    ?? ''
+  const doctorName = (doctor ? pickString(doctor, 'name', 'full_name', 'fullName') : null)
+    ?? pickString(nested, 'doctor_name', 'doctorName')
+    ?? ''
+  return {
+    id,
+    patientId: (patient ? pickString(patient, 'id', 'patient_id', 'patientId') : null)
+      ?? pickString(nested, 'patient_id', 'patientId')
+      ?? '',
+    doctorId: (doctor ? pickString(doctor, 'id', 'doctor_id', 'doctorId') : null)
+      ?? pickString(nested, 'doctor_id', 'doctorId')
+      ?? '',
+    patientName,
+    patientAge: patient ? pickNumber(patient, 'age') : pickNumber(nested, 'age'),
+    patientGender: (patient ? pickString(patient, 'gender') : null) ?? '',
+    purpose: pickString(nested, 'purpose', 'reason') ?? '',
+    appointmentDate: date.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? date,
+    appointmentTime: time,
+    durationMinutes: pickNumber(nested, 'duration_minutes', 'durationMinutes', 'duration') ?? TELEHEALTH_DURATION_MINUTES,
+    status: normalizeTelehealthStatus(pickString(nested, 'status', 'consultation_status', 'consultationStatus')),
+    meetingLink: isGoogleMeetLink(rawLink) ? rawLink.trim() : undefined,
+    doctorName,
+    doctorSpecialization: (doctor ? pickString(doctor, 'specialization', 'specialty') : null) ?? undefined,
+  }
+}
+
+/** Prefer the refreshed appointment, and keep a Meet link the refresh omitted. */
+function mergeTelehealthAppointment(
+  primary: TelehealthAppointment | null,
+  fallback: TelehealthAppointment | null,
+): TelehealthAppointment | null {
+  if (!primary) return fallback
+  if (!fallback) return primary
+  return {
+    ...fallback,
+    ...primary,
+    patientName: primary.patientName || fallback.patientName,
+    doctorName: primary.doctorName || fallback.doctorName,
+    doctorSpecialization: primary.doctorSpecialization || fallback.doctorSpecialization,
+    purpose: primary.purpose || fallback.purpose,
+    appointmentDate: primary.appointmentDate || fallback.appointmentDate,
+    appointmentTime: primary.appointmentTime || fallback.appointmentTime,
+    status: primary.status || fallback.status,
+    meetingLink: primary.meetingLink || fallback.meetingLink,
   }
 }
 
@@ -465,24 +662,59 @@ export const telehealthService = {
     }
   },
 
-  async reschedule(appointmentId: string, payload: RescheduleTelehealthPayload) {
+  async getAppointment(appointmentId: string): Promise<TelehealthAppointment> {
+    const id = appointmentId.trim()
+    if (!id) throw new ApiError('Appointment could not be found.', 404)
+    const data = await apiFetch<unknown>(`/api/telehealth/${encodeURIComponent(id)}`)
+    const appointment = mapTelehealthDetails(data, id) ?? mapTelehealthDetails(asRecord(data)?.data, id)
+    if (!appointment) throw new ApiError('Appointment could not be found.', 404)
+    return appointment
+  },
+
+  async reschedule(appointmentId: string, payload: RescheduleTelehealthPayload): Promise<TelehealthAppointment> {
     const id = appointmentId.trim()
     const appointmentDate = payload.appointmentDate.trim()
     const appointmentTime = toStartTime(payload.appointmentTime)
     if (!id || !/^\d{4}-\d{2}-\d{2}$/.test(appointmentDate) || !appointmentTime) {
       throw new ApiError(RESCHEDULE_MESSAGES.GENERIC, 400)
     }
-    return apiFetch<unknown>(`/api/telehealth/${encodeURIComponent(id)}/reschedule`, {
+    const data = await apiFetch<unknown>(`/api/telehealth/${encodeURIComponent(id)}/reschedule`, {
       method: 'POST',
       body: JSON.stringify({
         appointment_date: appointmentDate,
         appointment_time: appointmentTime,
       }),
     })
+    const moved = mapTelehealthDetails(data, id) ?? mapTelehealthDetails(asRecord(data)?.data, id)
+    const fresh = await this.getAppointment(id).catch(() => null)
+    const appointment = mergeTelehealthAppointment(fresh, moved)
+    if (!appointment) throw new ApiError(RESCHEDULE_MESSAGES.GENERIC, 502)
+    return {
+      ...appointment,
+      appointmentDate: moved?.appointmentDate || appointmentDate,
+      appointmentTime: moved?.appointmentTime || appointmentTime,
+      meetingLink: fresh?.meetingLink || moved?.meetingLink || appointment.meetingLink,
+    }
+  },
+
+  async cancel(appointmentId: string): Promise<TelehealthAppointment> {
+    const id = appointmentId.trim()
+    if (!id) throw new ApiError(CANCEL_MESSAGES.NOT_FOUND, 404)
+    const data = await apiFetch<unknown>(`/api/telehealth/${encodeURIComponent(id)}/cancel`, {
+      method: 'POST',
+    })
+    const cancelled = mapTelehealthDetails(data, id) ?? mapTelehealthDetails(asRecord(data)?.data, id)
+    const fresh = await this.getAppointment(id).catch(() => null)
+    const appointment = mergeTelehealthAppointment(
+      fresh ? { ...fresh, status: 'CANCELLED' } : null,
+      cancelled ? { ...cancelled, status: 'CANCELLED' } : null,
+    )
+    if (!appointment) throw new ApiError(CANCEL_MESSAGES.GENERIC, 502)
+    return { ...appointment, status: 'CANCELLED' }
   },
 
   async validateMeeting(meetingToken: string): Promise<TelehealthMeeting> {
-    const data = await apiFetch<unknown>(`/api/telehealth/meetings/${encodeURIComponent(meetingToken)}`)
+    const data = await apiFetch<unknown>(`/api/telehealth/meeting/${encodeURIComponent(meetingToken)}`)
     const meeting = mapMeeting(data, meetingToken) ?? mapMeeting(asRecord(data)?.data, meetingToken)
     if (!meeting) throw new ApiError('This consultation could not be verified.', 404)
     return meeting

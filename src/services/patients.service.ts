@@ -539,12 +539,41 @@ function mapDepartment(value: unknown): PatientDepartmentRef | null {
   return { id, name, code: code ?? undefined }
 }
 
+function isLegacyAppMeetingUrl(value: string): boolean {
+  return /\/telehealth\/[^/?#\s]+/i.test(value)
+}
+
+/**
+ * The appointment's meeting_link wins. Older room or session URLs are used only
+ * when they are not the in-app /telehealth/{token} route.
+ */
 function meetingLinkFrom(
   source: Record<string, unknown> | null,
   appointment: Record<string, unknown> | null,
 ): string | null {
-  const keys = ['meeting_link', 'meetingLink', 'session_url', 'sessionUrl', 'room_url', 'roomUrl'] as const
-  return (source ? pickString(source, ...keys) : null) ?? (appointment ? pickString(appointment, ...keys) : null)
+  const records = [appointment, source].filter((record): record is Record<string, unknown> => Boolean(record))
+  for (const record of records) {
+    const link = pickString(record, 'meeting_link', 'meetingLink')
+    if (link) return link
+  }
+  for (const record of records) {
+    const link = pickString(record, 'session_url', 'sessionUrl', 'room_url', 'roomUrl')
+    if (link && !isLegacyAppMeetingUrl(link)) return link
+  }
+  return null
+}
+
+function nestedAppointment(source: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!source) return null
+  return asRecord(source.telehealth_appointment)
+    ?? asRecord(source.telehealthAppointment)
+    ?? asRecord(source.telehealth_session)
+    ?? asRecord(source.telehealthSession)
+    ?? asRecord(source.appointment)
+    ?? asRecord(source.next_appointment)
+    ?? asRecord(source.nextAppointment)
+    ?? asRecord(source.visit)
+    ?? asRecord(source.consultation)
 }
 
 function localDateAndTime(value: string | null): { date: string | null; time: string | null } {
@@ -573,7 +602,7 @@ export function mapPatient(value: unknown): Patient | null {
   const access = pickString(source, 'access_type', 'accessType')
   const admission = asRecord(source.admission)
   const rawType = pickString(source, 'patient_type', 'patientType') ?? ''
-  const appointment = asRecord(source.appointment ?? source.next_appointment ?? source.nextAppointment ?? source.visit ?? source.consultation)
+  const appointment = nestedAppointment(source)
   const consultationAt = pickString(source, 'consultation_at', 'consultationAt', 'visit_at', 'visitAt')
     ?? (appointment ? pickString(appointment, 'consultation_at', 'consultationAt', 'scheduled_at', 'scheduledAt') : null)
   const splitConsultation = localDateAndTime(consultationAt)
@@ -1112,9 +1141,15 @@ export const patientsService = {
     const patient = mapPatientPayload(data)
     if (!patient) throw new Error('Patient response was empty.')
     const source = asRecord(data)
-    const link = meetingLinkFrom(source, asRecord(source?.appointment) ?? asRecord(source?.consultation))
-    if (link && !patient.roomUrl) return { ...patient, roomUrl: link }
-    return patient
+    const appointment = nestedAppointment(source)
+    const link = meetingLinkFrom(source, appointment)
+    let next = patient
+    if (link && !next.roomUrl) next = { ...next, roomUrl: link }
+    if (!next.appointmentId && appointment) {
+      const appointmentId = pickString(appointment, 'appointment_id', 'appointmentId', 'id')
+      if (appointmentId) next = { ...next, appointmentId }
+    }
+    return next
   },
 
   async updatePatient(patientId: string, payload: PatientUpdatePayload) {

@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { GoogleCalendarCard } from '@/components/hospital/google-calendar-card'
 import { useDoctorAuth, type DoctorUser } from '@/components/hospital/doctor-auth-context'
 import { StatusBadge } from '@/components/hospital/status-badge'
 import { ApiError } from '@/lib/api-client'
@@ -147,9 +148,9 @@ export function DoctorPortal({ section = 'dashboard' }: { section?: 'dashboard' 
             <Button
               variant={section === 'profile' ? 'secondary' : 'ghost'}
               size="sm"
-              onClick={() => navigate('/doctor/profile')}
+              onClick={() => navigate('/doctor/settings')}
             >
-              Profile
+              Settings
             </Button>
           </nav>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -401,6 +402,7 @@ export function DoctorAccountPanel({ user }: { user: DoctorUser }) {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
       <ProfileCard user={user} />
+      <GoogleCalendarCard />
       <ChangePasswordCard />
       <SecurityNote />
     </div>

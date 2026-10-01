@@ -16,6 +16,8 @@ import { EmptyState } from '@/components/hospital/empty-state'
 import { BookOpdDialog } from '@/components/hospital/clinical/book-opd-dialog'
 import { PatientFormDialog } from '@/components/hospital/clinical/patient-form-dialog'
 import { RescheduleTelehealthDialog } from '@/components/hospital/clinical/reschedule-telehealth-dialog'
+import { JoinGoogleMeetButton } from '@/components/hospital/clinical/join-google-meet-button'
+import { TelehealthAppointmentDialog } from '@/components/hospital/clinical/telehealth-appointment-dialog'
 import { useClinicalStore } from '@/components/hospital/clinical/clinical-store'
 import { StatusBadge } from '@/components/hospital/status-badge'
 import { useAuth } from '@/components/hospital/auth-context'
@@ -40,14 +42,12 @@ import {
   appointmentInWindow,
   appointmentMatchesSearch,
   appointmentMatchesStatus,
-  canJoinTelehealth,
   formatTelehealthDate,
   formatTelehealthTime,
   normalizeTelehealthStatus,
   telehealthAppointmentFromPatient,
   type TelehealthAppointment,
 } from '@/services/telehealth.service'
-import { toast } from 'sonner'
 
 function openChart(patientId: string) {
   navigate(`/doctor/patients/${patientId}`)
@@ -716,6 +716,7 @@ function TeleTable({
   onRetry,
   emptyTitle,
   onReschedule,
+  onOpen,
 }: {
   rows: TelehealthAppointment[]
   loading: boolean
@@ -723,75 +724,56 @@ function TeleTable({
   onRetry: () => void
   emptyTitle: string
   onReschedule: (appointment: TelehealthAppointment) => void
+  onOpen: (appointment: TelehealthAppointment) => void
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-      <table className="w-full min-w-[1080px] text-sm">
+      <table className="w-full min-w-[980px] text-sm">
         <thead className="text-left text-[11px] tracking-wider text-muted-foreground uppercase">
           <tr className="border-b">
-            {['Patient', 'Purpose', 'Doctor', 'Time', 'Duration', 'Status', 'Actions'].map((heading) => (
+            {['Patient / Doctor', 'Date', 'Time', 'Status', 'Google Meet', 'Actions'].map((heading) => (
               <th key={heading} className="px-3 py-3 font-semibold">{heading}</th>
             ))}
           </tr>
         </thead>
         <tbody>
           {loading || error || rows.length === 0 ? (
-            <TableMessage colSpan={7} loading={loading} error={error} emptyTitle={emptyTitle} onRetry={onRetry} />
+            <TableMessage colSpan={6} loading={loading} error={error} emptyTitle={emptyTitle} onRetry={onRetry} />
           ) : rows.map((visit) => {
             const status = normalizeTelehealthStatus(visit.status)
-            const joinable = canJoinTelehealth(status, visit.meetingLink)
             const closed = status === 'CANCELLED' || status === 'COMPLETED'
             return (
-              <tr key={`${visit.id}-${visit.appointmentDate}-${visit.appointmentTime}`} className="border-b last:border-b-0">
+              <tr key={`${visit.patientId}-${visit.id}-${visit.appointmentDate}-${visit.appointmentTime}`} className="border-b last:border-b-0">
                 <td className="px-3 py-3">
-                  <button type="button" className="flex items-center gap-2.5 text-left" onClick={() => openChart(visit.patientId)}>
-                    <span className="flex size-8 items-center justify-center rounded-full bg-cyan-100 text-[11px] font-semibold text-cyan-800">
-                      {initials(visit.patientName)}
-                    </span>
-                    <span>
-                      <span className="block font-medium">{visit.patientName}</span>
-                      <span className="block text-xs text-muted-foreground">{personMeta(visit.patientAge, visit.patientGender)}</span>
-                    </span>
+                  <button type="button" className="text-left" onClick={() => openChart(visit.patientId)}>
+                    <span className="block font-medium">{visit.patientName}</span>
+                    <span className="block text-xs text-muted-foreground">{visit.doctorName || '—'}</span>
                   </button>
                 </td>
-                <td className="px-3 py-3">{visit.purpose || '—'}</td>
-                <td className="px-3 py-3">
-                  <p>{visit.doctorName || '—'}</p>
-                  <p className="text-xs text-muted-foreground">{visit.doctorSpecialization || ''}</p>
-                </td>
-                <td className="px-3 py-3 whitespace-nowrap">
-                  <p className="font-medium">{visit.appointmentTime ? formatTelehealthTime(visit.appointmentTime) : '—'}</p>
-                  <p className="text-xs text-muted-foreground">{visit.appointmentDate ? formatTelehealthDate(visit.appointmentDate) : '—'}</p>
-                </td>
-                <td className="px-3 py-3 whitespace-nowrap">{visit.durationMinutes} min</td>
+                <td className="px-3 py-3 whitespace-nowrap">{visit.appointmentDate ? formatTelehealthDate(visit.appointmentDate) : '—'}</td>
+                <td className="px-3 py-3 whitespace-nowrap">{visit.appointmentTime ? formatTelehealthTime(visit.appointmentTime) : '—'}</td>
                 <td className="px-3 py-3">
                   {status ? <StatusBadge status={status} /> : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-3 py-3">
+                  <JoinGoogleMeetButton
+                    meetingLink={visit.meetingLink}
+                    status={visit.status}
+                    appointmentDate={visit.appointmentDate}
+                    appointmentTime={visit.appointmentTime}
+                    durationMinutes={visit.durationMinutes}
+                  />
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
-                      className="h-8 gap-1.5 rounded-lg bg-[#1f7a4d] px-3 text-xs text-white hover:bg-[#186540]"
-                      disabled={!joinable}
-                      title={status === 'CANCELLED'
-                        ? 'This appointment has been cancelled.'
-                        : visit.meetingLink
-                          ? 'Join video call'
-                          : 'Meeting link is not available for this appointment.'}
-                      onClick={() => {
-                        const link = visit.meetingLink?.trim()
-                        if (!link) {
-                          toast.error('Meeting link is not available for this appointment.')
-                          return
-                        }
-                        if (status === 'CANCELLED') {
-                          toast.error('This appointment has been cancelled.')
-                          return
-                        }
-                        window.open(link, '_blank', 'noopener,noreferrer')
-                      }}
+                      variant="outline"
+                      className="h-8 rounded-lg bg-card px-3 text-xs shadow-none"
+                      disabled={!visit.id}
+                      onClick={() => onOpen(visit)}
                     >
-                      <Video className="size-3.5" aria-hidden /> Join Video Call
+                      Details
                     </Button>
                     <Button size="sm" variant="outline" className="h-8 gap-1 rounded-lg bg-card px-3 text-xs shadow-none" onClick={() => askAi(visit.patientId)}>
                       <Sparkles className="size-3.5" aria-hidden /> Review with AI
@@ -800,7 +782,7 @@ function TeleTable({
                       size="sm"
                       variant="outline"
                       className="h-8 gap-1 rounded-lg bg-card px-3 text-xs shadow-none"
-                      disabled={closed}
+                      disabled={closed || !visit.id}
                       onClick={() => onReschedule(visit)}
                     >
                       <CalendarPlus className="size-3.5" aria-hidden /> Reschedule
@@ -900,13 +882,34 @@ export function TelehealthView() {
   const [query, setQuery] = useState('')
   const [registering, setRegistering] = useState(false)
   const [reschedule, setReschedule] = useState<TelehealthAppointment | null>(null)
+  const [detailsId, setDetailsId] = useState<string | null>(null)
+  const [patches, setPatches] = useState<Record<string, TelehealthAppointment>>({})
   const debouncedSearch = useDebounced(query)
   const listed = useTypedPatients('TELEHEALTH', '')
   const today = todayLocalISO()
   const appointments = useMemo(
-    () => listed.items.map(telehealthAppointmentFromPatient),
-    [listed.items],
+    () => listed.items.map((patient) => {
+      const appointment = telehealthAppointmentFromPatient(patient)
+      const patch = appointment.id ? patches[appointment.id] : undefined
+      if (!patch) return appointment
+      return {
+        ...appointment,
+        ...patch,
+        patientName: patch.patientName || appointment.patientName,
+        doctorName: patch.doctorName || appointment.doctorName,
+        appointmentDate: patch.appointmentDate || appointment.appointmentDate,
+        appointmentTime: patch.appointmentTime || appointment.appointmentTime,
+        status: patch.status || appointment.status,
+        meetingLink: patch.meetingLink || appointment.meetingLink,
+      }
+    }),
+    [listed.items, patches],
   )
+
+  function remember(appointment: TelehealthAppointment) {
+    if (!appointment.id) return
+    setPatches((current) => ({ ...current, [appointment.id]: appointment }))
+  }
 
   const rows = useMemo(() => appointments.filter((visit) => (
     appointmentInWindow(visit, when, today)
@@ -958,6 +961,7 @@ export function TelehealthView() {
         onRetry={listed.retry}
         emptyTitle={appointments.length > 0 ? 'No telehealth visits in this view.' : 'No telehealth patients found.'}
         onReschedule={setReschedule}
+        onOpen={(visit) => setDetailsId(visit.id)}
       />
       <PatientFormDialog
         open={registering}
@@ -971,8 +975,21 @@ export function TelehealthView() {
         open={reschedule != null}
         onOpenChange={(open) => { if (!open) setReschedule(null) }}
         onSaved={(result) => {
+          remember(result)
           setWhen(result.appointmentDate > today ? 'upcoming' : 'today')
           setStatus((current) => (current === 'all' || current === 'RESCHEDULED' ? current : 'all'))
+          useClinicalStore.getState().bumpPatients()
+          listed.retry()
+        }}
+      />
+      <TelehealthAppointmentDialog
+        appointmentId={detailsId}
+        open={detailsId != null}
+        onOpenChange={(open) => { if (!open) setDetailsId(null) }}
+        onChanged={(result) => {
+          remember(result)
+          if (result.appointmentDate) setWhen(result.appointmentDate > today ? 'upcoming' : 'today')
+          if (normalizeTelehealthStatus(result.status) === 'CANCELLED') setStatus('all')
           useClinicalStore.getState().bumpPatients()
           listed.retry()
         }}

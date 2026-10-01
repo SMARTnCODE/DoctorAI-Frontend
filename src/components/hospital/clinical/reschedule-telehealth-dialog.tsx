@@ -57,7 +57,7 @@ export function RescheduleTelehealthDialog({
   appointment: TelehealthAppointment | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSaved: (result: { appointmentDate: string; appointmentTime: string }) => void
+  onSaved: (result: TelehealthAppointment) => void
 }) {
   const { logout } = useAuth()
   const [date, setDate] = useState('')
@@ -156,13 +156,13 @@ export function RescheduleTelehealthDialog({
     }
     setSubmitting(true)
     try {
-      await telehealthService.reschedule(appointment.id, {
+      const saved = await telehealthService.reschedule(appointment.id, {
         appointmentDate: date,
         appointmentTime: time,
       })
       toast.success('Telehealth appointment rescheduled successfully.')
       onOpenChange(false)
-      onSaved({ appointmentDate: date, appointmentTime: time })
+      onSaved(saved)
     } catch (error) {
       if (await handlePatientAuthError(error, logout, '/doctor/telehealth')) return
       const message = rescheduleFailureMessage(error)

@@ -21,7 +21,9 @@ import {
   validationFieldErrors,
 } from '@/lib/patient-api-error'
 import { AvailabilitySlotPicker } from '@/components/hospital/clinical/availability-slot-picker'
+import { JoinGoogleMeetButton } from '@/components/hospital/clinical/join-google-meet-button'
 import { todayLocalISO } from '@/lib/format'
+import { navigate } from '@/lib/hash-nav'
 import { cn } from '@/lib/utils'
 import {
   CLINICAL_STATUS_LABELS,
@@ -45,11 +47,13 @@ import {
 import {
   formatTelehealthDate,
   formatTelehealthTime,
+  isGoogleMeetLink,
   isSlotUnavailableError,
   telehealthErrorMessage,
   telehealthService,
   type DoctorAvailabilitySlot,
 } from '@/services/telehealth.service'
+import { googleCalendarService } from '@/services/google-calendar.service'
 
 const MINT_BUTTON = 'rounded-full bg-[#8ed4b0] px-5 text-[#0b3430] hover:bg-[#a4e0c0]'
 const PHONE_PATTERN = /^\+?[1-9]\d{6,14}$/
@@ -74,6 +78,8 @@ interface ScheduledVisit {
   purpose: string
   date: string
   time: string
+  status: string
+  durationMinutes: number | null
   meetingLink: string | null
 }
 
@@ -135,6 +141,7 @@ export function PatientFormDialog({
   const [availabilityError, setAvailabilityError] = useState<string | null>(null)
   const [availabilityReload, setAvailabilityReload] = useState(0)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
+  const [calendarConnected, setCalendarConnected] = useState<boolean | null>(null)
   const [scheduled, setScheduled] = useState<ScheduledVisit | null>(null)
   const [condition, setCondition] = useState('')
   const [ward, setWard] = useState('')
@@ -226,6 +233,22 @@ export function PatientFormDialog({
       })
     return () => { cancelled = true }
   }, [open, telehealth, logout, doctorProfile])
+
+  useEffect(() => {
+    if (!open || !telehealth) {
+      setCalendarConnected(null)
+      return
+    }
+    let cancelled = false
+    googleCalendarService.status()
+      .then((status) => {
+        if (!cancelled) setCalendarConnected(status?.connected === true)
+      })
+      .catch(() => {
+        if (!cancelled) setCalendarConnected(null)
+      })
+    return () => { cancelled = true }
+  }, [open, telehealth])
 
   useEffect(() => {
     const dateReady = /^\d{4}-\d{2}-\d{2}$/.test(appointmentDate)
@@ -372,6 +395,10 @@ export function PatientFormDialog({
     }
     const payload = validate()
     if (!payload) return
+    if (payload.patientType === 'TELEHEALTH' && calendarConnected === false) {
+      toast.error('Google Calendar is not connected. Connect it in Settings before scheduling a telehealth appointment.')
+      return
+    }
     if (submittingRef.current) return
     submittingRef.current = true
     setSubmitting(true)
@@ -380,15 +407,36 @@ export function PatientFormDialog({
       if (payload.patientType === 'TELEHEALTH') {
         const selected = doctors.find((doctor) => doctor.id === payload.doctorId)
         const doctorName = saved.primaryDoctor?.name || selected?.name || ''
+        let appointmentDate = saved.appointmentDate || payload.appointmentDate || ''
+        let appointmentTime = saved.appointmentTime || payload.appointmentTime || ''
+        let purpose = saved.purpose || payload.purpose || ''
+        let status = saved.visitStatus || 'SCHEDULED'
+        let durationMinutes = saved.durationMin ?? null
+        let meetingLink = isGoogleMeetLink(saved.roomUrl) ? saved.roomUrl.trim() : null
+        if (saved.appointmentId) {
+          try {
+            const appointment = await telehealthService.getAppointment(saved.appointmentId)
+            appointmentDate = appointment.appointmentDate || appointmentDate
+            appointmentTime = appointment.appointmentTime || appointmentTime
+            purpose = appointment.purpose || purpose
+            status = appointment.status || status
+            durationMinutes = appointment.durationMinutes || durationMinutes
+            meetingLink = appointment.meetingLink || meetingLink
+          } catch {
+            /* The booking response still supplies the Meet link when the refresh fails. */
+          }
+        }
         toast.success('Telehealth appointment scheduled successfully.')
         setScheduled({
           patientName: saved.fullName,
           doctorName,
           doctorSpecialty: saved.primaryDoctor?.specialty || selected?.specialty || saved.department?.name || '',
-          purpose: saved.purpose || payload.purpose || '',
-          date: saved.appointmentDate || payload.appointmentDate || '',
-          time: saved.appointmentTime || payload.appointmentTime || '',
-          meetingLink: saved.roomUrl ?? null,
+          purpose,
+          date: appointmentDate,
+          time: appointmentTime,
+          status,
+          durationMinutes,
+          meetingLink,
         })
       } else {
         const departmentName = saved.department?.name
@@ -480,6 +528,14 @@ export function PatientFormDialog({
           </Field>
           {telehealth ? (
             <section className="space-y-4 rounded-lg border p-3">
+              {calendarConnected === false ? (
+                <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="alert">
+                  <p>Google Calendar is not connected. Connect it in Settings before scheduling a telehealth appointment.</p>
+                  <Button type="button" variant="outline" size="sm" onClick={() => navigate('/doctor/settings')}>
+                    Open settings
+                  </Button>
+                </div>
+              ) : null}
               <Field label="Purpose" required error={errors.purpose}>
                 <Input
                   value={purpose}
@@ -747,7 +803,11 @@ export function PatientFormDialog({
             <Button type="button" variant="ghost" disabled={submitting} onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className={MINT_BUTTON} disabled={submitting}>
+            <Button
+              type="submit"
+              className={MINT_BUTTON}
+              disabled={submitting || (telehealth && calendarConnected === false)}
+            >
               {submitting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
               {submitLabel}
             </Button>
@@ -759,7 +819,9 @@ export function PatientFormDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Telehealth Appointment Scheduled</DialogTitle>
-          <DialogDescription>The meeting link is sent by email. It is not shown in the patient list.</DialogDescription>
+          <DialogDescription>
+            The Google Meet link comes from the appointment that was just booked.
+          </DialogDescription>
         </DialogHeader>
         {scheduled ? (
           <div className="space-y-3 text-sm">
@@ -768,27 +830,40 @@ export function PatientFormDialog({
             <SummaryRow label="Purpose" value={scheduled.purpose || '—'} />
             <SummaryRow label="Date" value={scheduled.date ? formatTelehealthDate(scheduled.date) : '—'} />
             <SummaryRow label="Time" value={scheduled.time ? formatTelehealthTime(scheduled.time) : '—'} />
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">Meeting link</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!scheduled.meetingLink}
-                onClick={() => {
-                  if (!scheduled.meetingLink) {
-                    toast.error('Meeting link is not available for this appointment.')
-                    return
-                  }
-                  void navigator.clipboard.writeText(scheduled.meetingLink).then(
-                    () => toast.success('Meeting link copied.'),
-                    () => toast.error('Could not copy the meeting link.'),
-                  )
-                }}
-              >
-                <Copy className="size-3.5" aria-hidden /> Copy meeting link
-              </Button>
-            </div>
+            {scheduled.meetingLink ? (
+              <div className="space-y-2 rounded-lg border px-3 py-3">
+                <p className="text-xs font-medium text-muted-foreground">Google Meet</p>
+                <p className="break-all text-xs">{scheduled.meetingLink}</p>
+                <div className="flex flex-wrap gap-2">
+                  <JoinGoogleMeetButton
+                    meetingLink={scheduled.meetingLink}
+                    status={scheduled.status}
+                    appointmentDate={scheduled.date}
+                    appointmentTime={scheduled.time}
+                    durationMinutes={scheduled.durationMinutes}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const link = scheduled.meetingLink
+                      if (!link) return
+                      void navigator.clipboard.writeText(link).then(
+                        () => toast.success('Meeting link copied.'),
+                        () => toast.error('Could not copy the meeting link.'),
+                      )
+                    }}
+                  >
+                    <Copy className="size-3.5" aria-hidden /> Copy meeting link
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-amber-700" role="alert">
+                Google Meet link is not available for this appointment.
+              </p>
+            )}
             <div className="rounded-lg border px-3 py-2">
               <p className="text-xs font-medium text-muted-foreground">Notifications sent</p>
               <p className="mt-1 flex items-center gap-1.5"><Check className="size-3.5 text-emerald-600" aria-hidden /> Patient email</p>

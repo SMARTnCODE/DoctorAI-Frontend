@@ -51,7 +51,7 @@ const TITLES: Record<DoctorSection, string> = {
   patient: 'Patient Records',
   referrals: 'Referrals',
   ai: 'Clinical AI Co-Pilot',
-  profile: 'Profile',
+  profile: 'Settings',
 }
 
 const SUBTITLES: Record<DoctorSection, string> = {
@@ -63,7 +63,7 @@ const SUBTITLES: Record<DoctorSection, string> = {
   patient: 'Search, add & manage all patients',
   referrals: 'Received and sent referrals',
   ai: 'Evidence-based clinical assistance',
-  profile: 'Account and password',
+  profile: 'Account, password, and Google Calendar',
 }
 
 function NavList({
@@ -139,8 +139,8 @@ function DoctorIdentity({ name, specialty, onLogout }: { name: string; specialty
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuLabel>Account</DropdownMenuLabel>
-        <DropdownMenuItem onClick={() => navigate('/doctor/profile')}>
-          <UserRound className="size-4" /> Profile
+        <DropdownMenuItem onClick={() => navigate('/doctor/settings')}>
+          <UserRound className="size-4" /> Settings
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onLogout}>
@@ -329,7 +329,7 @@ export function DoctorShell({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>{name}</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={() => navigate('/doctor/profile')}>Profile</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/doctor/settings')}>Settings</DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={onLogout}>
                     <LogOut className="size-4" /> Logout

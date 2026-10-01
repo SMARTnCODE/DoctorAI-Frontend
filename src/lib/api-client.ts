@@ -139,6 +139,8 @@ function tokenForPath(path: string): string | null {
     pathname === '/api/clinical-visits' ||
     pathname.startsWith('/api/clinical-visits/') ||
     pathname.startsWith('/api/telehealth/') ||
+    pathname === '/api/google' ||
+    pathname.startsWith('/api/google/') ||
     /^\/api\/doctors\/[^/]+\/(availability|available-slots|telehealth-slots)$/.test(pathname)
   ) {
     const profile = getAuthProfile()
@@ -170,10 +172,25 @@ function validationText(entry: unknown): string | null {
   return typeof msg === 'string' && msg.trim() ? msg.trim() : null
 }
 
+function nestedDetail(data: Record<string, unknown>): Record<string, unknown> | null {
+  const detail = data.detail
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return null
+  return detail as Record<string, unknown>
+}
+
+function errorCodeFromBody(data: Record<string, unknown>): string | undefined {
+  if (typeof data.code === 'string' && data.code.trim()) return data.code.trim()
+  const detail = nestedDetail(data)
+  if (detail && typeof detail.code === 'string' && detail.code.trim()) return detail.code.trim()
+  return undefined
+}
+
 function errorMessageFromBody(data: Record<string, unknown>, status: number): string {
   if (typeof data.message === 'string' && data.message.trim()) return data.message
   if (typeof data.error === 'string' && data.error.trim()) return data.error
   if (typeof data.detail === 'string' && data.detail.trim()) return data.detail
+  const detail = nestedDetail(data)
+  if (detail && typeof detail.message === 'string' && detail.message.trim()) return detail.message.trim()
   const detailList = Array.isArray(data.detail) ? data.detail : Array.isArray(data.errors) ? data.errors : null
   if (detailList && detailList.length > 0) {
     const parts = detailList.map(validationText).filter((part): part is string => Boolean(part))
@@ -243,7 +260,7 @@ async function apiFetchOnce<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       errorMessageFromBody(data, res.status),
       res.status,
-      (data.code as string | undefined) ?? undefined,
+      errorCodeFromBody(data),
       data,
     )
   }

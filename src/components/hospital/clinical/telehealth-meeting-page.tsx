@@ -1,26 +1,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { CalendarDays, Clock, Loader2, Stethoscope, Video } from 'lucide-react'
+import { CalendarDays, Loader2, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/components/hospital/auth-context'
-import { ApiError } from '@/lib/api-client'
 import { handlePatientAuthError } from '@/lib/patient-api-error'
 import { navigate } from '@/lib/hash-nav'
 import {
   formatTelehealthDate,
   formatTelehealthTime,
-  inAppTelehealthRoom,
-  isAppMeetingLink,
-  normalizeTelehealthStatus,
+  isGoogleMeetLink,
+  openGoogleMeet,
   telehealthErrorMessage,
+  telehealthJoinBlockReason,
   telehealthService,
   type TelehealthMeeting,
-  type TelehealthRoomProvider,
 } from '@/services/telehealth.service'
-
-const roomProvider: TelehealthRoomProvider = inAppTelehealthRoom
 
 function Detail({ label, value }: { label: string; value: string }) {
   return (
@@ -36,7 +32,6 @@ export function TelehealthMeetingPage({ meetingToken }: { meetingToken: string }
   const [meeting, setMeeting] = useState<TelehealthMeeting | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [started, setStarted] = useState(false)
 
   useEffect(() => {
     const token = meetingToken.trim()
@@ -64,10 +59,6 @@ export function TelehealthMeetingPage({ meetingToken }: { meetingToken: string }
         if (cancelled) return
         if (await handlePatientAuthError(err, logout, '/doctor/telehealth')) return
         setMeeting(null)
-        if (err instanceof ApiError && err.status === 403) {
-          setError('You are not authorized to open this consultation.')
-          return
-        }
         setError(telehealthErrorMessage(err, 'This consultation could not be verified.'))
       })
       .finally(() => {
@@ -76,26 +67,26 @@ export function TelehealthMeetingPage({ meetingToken }: { meetingToken: string }
     return () => { cancelled = true }
   }, [meetingToken, logout, doctorProfile?.id, userId])
 
-  function startConsultation() {
-    if (!meeting) return
-    if (normalizeTelehealthStatus(meeting.status) === 'CANCELLED') {
-      toast.error('This appointment has been cancelled.')
+  const meetLink = isGoogleMeetLink(meeting?.meetingLink) ? meeting.meetingLink : null
+  const joinReason = meeting
+    ? telehealthJoinBlockReason({
+      status: meeting.status,
+      meetingLink: meeting.meetingLink,
+      appointmentDate: meeting.appointmentDate,
+      appointmentTime: meeting.appointmentTime,
+    })
+    : null
+
+  function joinMeet() {
+    if (!meetLink) {
+      toast.error(joinReason ?? 'Google Meet link is not available for this appointment.')
       return
     }
-    roomProvider.join({
-      meetingToken: meeting.meetingToken,
-      meetingLink: meeting.meetingLink,
-      patientName: meeting.patientName,
-      doctorName: meeting.doctorName,
-    })
-    const link = meeting.meetingLink?.trim()
-    if (link && !isAppMeetingLink(link)) {
-      window.open(link, '_blank', 'noopener,noreferrer')
+    if (!openGoogleMeet(meetLink)) {
+      toast.error('Google Meet link is not available for this appointment.')
     }
-    setStarted(true)
   }
 
-  const cancelled = normalizeTelehealthStatus(meeting?.status) === 'CANCELLED'
   const when = meeting
     ? [formatTelehealthDate(meeting.appointmentDate), formatTelehealthTime(meeting.appointmentTime)].filter((part) => part && part !== '—').join(' · ')
     : ''
@@ -134,31 +125,22 @@ export function TelehealthMeetingPage({ meetingToken }: { meetingToken: string }
                 <p className="font-medium">{when || '—'}</p>
               </div>
             </div>
-            {cancelled ? (
-              <p className="text-sm text-rose-700" role="alert">This appointment has been cancelled.</p>
+            {joinReason ? (
+              <p className="text-sm text-rose-700" role="alert">{joinReason}</p>
             ) : null}
+            {meetLink ? (
+              <p className="break-all text-xs text-muted-foreground">{meetLink}</p>
+            ) : (
+              <p className="text-sm text-amber-800" role="status">Google Meet link is not available for this appointment.</p>
+            )}
             <Button
               type="button"
               className="h-10 w-full gap-2 bg-[#1f7a4d] text-white hover:bg-[#186540]"
-              disabled={cancelled}
-              onClick={startConsultation}
+              disabled={joinReason != null || !meetLink}
+              onClick={joinMeet}
             >
-              <Video className="size-4" aria-hidden />
-              {started ? 'Consultation in progress' : 'Start / Join Consultation'}
+              <Video className="size-4" aria-hidden /> Join Google Meet
             </Button>
-            {started && !cancelled ? (
-              <div className="space-y-2 rounded-lg border border-dashed px-3 py-4 text-sm">
-                <p className="flex items-center gap-2 font-medium">
-                  <Stethoscope className="size-4 text-teal-700" aria-hidden /> Consultation room
-                </p>
-                <p className="text-muted-foreground">
-                  You are in the DoctorAI telehealth room for {meeting.patientName}. Video can be connected here later without changing this screen.
-                </p>
-                <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Clock className="size-3.5" aria-hidden /> {when || 'Time not set'}
-                </p>
-              </div>
-            ) : null}
           </section>
         ) : null}
       </div>

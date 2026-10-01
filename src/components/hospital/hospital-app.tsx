@@ -121,7 +121,9 @@ function resolveDoctorView(path: string): { title: string; node: React.ReactNode
   if (section === 'patients') return { title: 'Patients', node: <DoctorClinicalPortal section="patients" /> }
   if (section === 'referrals') return { title: 'Referrals', node: <DoctorClinicalPortal section="referrals" /> }
   if (section === 'ai') return { title: 'AI Co-Pilot', node: <DoctorClinicalPortal section="ai" patientId={patientId} /> }
-  if (section === 'profile') return { title: 'Profile', node: <DoctorClinicalPortal section="profile" /> }
+  if (section === 'profile' || section === 'settings') {
+    return { title: 'Settings', node: <DoctorClinicalPortal section="profile" /> }
+  }
   return null
 }
 
