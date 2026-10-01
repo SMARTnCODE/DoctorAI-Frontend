@@ -1,0 +1,325 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-geist-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-geist-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: "JetBrains Mono", ui-monospace, monospace;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  /* Enterprise radius scale (stakeholder reference): structured, 3–6px
+     surfaces instead of large "modern SaaS" corners. Badges stay pill-shaped
+     via rounded-full (unaffected). */
+  --radius-sm: 0.1875rem;
+  --radius-md: 0.25rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.375rem;
+}
+
+/* ── Stakeholder palette overrides ─────────────────────────────────────────
+   Ramps are re-anchored to the hospital's clinical palette so every hardcoded
+   Tailwind color class across the app (teal-*, slate-*, emerald-*, …) resolves
+   to the stakeholder-approved hues. Anchors: teal-600 #18796D (primary accent),
+   teal-700 #146B61 (hover), teal-500 #2A8C80 (secondary), teal-900 #0B3430
+   (dark navigation surface), slate-800 #102A2A (primary text),
+   slate-500 #60757A (secondary text), slate-400 #82959A (muted text).
+   Violet/fuchsia map to a muted gray-teal so no bright purple remains. */
+@theme {
+  --color-teal-50: #E8F4F1;
+  --color-teal-100: #D9ECE8;
+  --color-teal-200: #B9DCD5;
+  --color-teal-300: #8FC6BC;
+  --color-teal-400: #57AC9F;
+  --color-teal-500: #2A8C80;
+  --color-teal-600: #18796D;
+  --color-teal-700: #146B61;
+  --color-teal-800: #10554D;
+  --color-teal-900: #0B3430;
+  --color-teal-950: #082622;
+
+  --color-slate-50: #F4F7F5;
+  --color-slate-100: #EDF2F0;
+  --color-slate-200: #D8E1DF;
+  --color-slate-300: #BFCFCC;
+  --color-slate-400: #82959A;
+  --color-slate-500: #60757A;
+  --color-slate-600: #53696F;
+  --color-slate-700: #2E4B47;
+  --color-slate-800: #102A2A;
+  --color-slate-900: #0C211F;
+  --color-slate-950: #081715;
+
+  --color-emerald-50: #E7F3EC;
+  --color-emerald-100: #D2E8DC;
+  --color-emerald-200: #B4D7C5;
+  --color-emerald-300: #8BC0A7;
+  --color-emerald-400: #57A182;
+  --color-emerald-500: #3E9270;
+  --color-emerald-600: #2F7D5B;
+  --color-emerald-700: #2F7054;
+  --color-emerald-800: #255740;
+  --color-emerald-900: #1C4534;
+
+  --color-amber-50: #FBF3DF;
+  --color-amber-100: #F6E8C6;
+  --color-amber-200: #EDD9A8;
+  --color-amber-300: #E2C27A;
+  --color-amber-400: #D3A94A;
+  --color-amber-500: #C49735;
+  --color-amber-600: #B78724;
+  --color-amber-700: #916D1D;
+  --color-amber-800: #75581C;
+  --color-amber-900: #5E4719;
+
+  /* orange joins the muted warning family (no bright orange) */
+  --color-orange-50: #FBF3DF;
+  --color-orange-100: #F6E8C6;
+  --color-orange-200: #EDD9A8;
+  --color-orange-300: #E2C27A;
+  --color-orange-400: #D3A94A;
+  --color-orange-500: #C49735;
+  --color-orange-600: #B78724;
+  --color-orange-700: #916D1D;
+  --color-orange-800: #75581C;
+  --color-orange-900: #5E4719;
+
+  --color-rose-50: #F9E9E6;
+  --color-rose-100: #F3D6D0;
+  --color-rose-200: #E9BBB2;
+  --color-rose-300: #DB968A;
+  --color-rose-400: #D9786A;
+  --color-rose-500: #CB6355;
+  --color-rose-600: #C84A3A;
+  --color-rose-700: #A84438;
+  --color-rose-800: #8A382F;
+  --color-rose-900: #6F2E27;
+
+  /* red mirrors the muted danger family (legacy destructive toast accents) */
+  --color-red-50: #F9E9E6;
+  --color-red-100: #F3D6D0;
+  --color-red-200: #E9BBB2;
+  --color-red-300: #DB968A;
+  --color-red-400: #D9786A;
+  --color-red-500: #CB6355;
+  --color-red-600: #C84A3A;
+  --color-red-700: #A84438;
+  --color-red-800: #8A382F;
+  --color-red-900: #6F2E27;
+
+  --color-sky-50: #E7F1F4;
+  --color-sky-100: #D4E7ED;
+  --color-sky-200: #B9D7E0;
+  --color-sky-300: #8FBFCD;
+  --color-sky-400: #62A0B2;
+  --color-sky-500: #528CA1;
+  --color-sky-600: #4B7F95;
+  --color-sky-700: #416D7C;
+  --color-sky-800: #375B68;
+  --color-sky-900: #2D4A55;
+
+  /* violet/fuchsia → muted gray-teal (stakeholder: no bright purple) */
+  --color-violet-50: #EFF3F2;
+  --color-violet-100: #E0E8E7;
+  --color-violet-200: #C6D4D2;
+  --color-violet-300: #A3B8B5;
+  --color-violet-400: #7E9A96;
+  --color-violet-500: #64807C;
+  --color-violet-600: #53696F;
+  --color-violet-700: #46585C;
+  --color-violet-800: #3A4A4D;
+  --color-violet-900: #2F3D40;
+
+  --color-fuchsia-50: #EFF3F2;
+  --color-fuchsia-100: #E0E8E7;
+  --color-fuchsia-200: #C6D4D2;
+  --color-fuchsia-300: #A3B8B5;
+  --color-fuchsia-400: #7E9A96;
+  --color-fuchsia-500: #64807C;
+  --color-fuchsia-600: #53696F;
+  --color-fuchsia-700: #46585C;
+  --color-fuchsia-800: #3A4A4D;
+  --color-fuchsia-900: #2F3D40;
+
+  /* Very subtle enterprise shadows only */
+  --shadow-xs: 0 1px 2px rgba(16, 42, 42, 0.04);
+  --shadow-sm: 0 1px 3px rgba(16, 42, 42, 0.06);
+  --shadow-md: 0 2px 8px rgba(16, 42, 42, 0.05);
+  --shadow-lg: 0 2px 8px rgba(16, 42, 42, 0.08);
+  --shadow-xl: 0 4px 12px rgba(16, 42, 42, 0.1);
+}
+
+:root {
+  color-scheme: light;
+  --hms-row-hover: #F1F7F5;
+  --hms-scroll-thumb: #C6D4D1;
+  --hms-scroll-thumb-hover: #A9BCB8;
+  --radius: 0.375rem;
+  --background: #F4F7F5;
+  --foreground: #102A2A;
+  --card: #FFFFFF;
+  --card-foreground: #102A2A;
+  --popover: #FFFFFF;
+  --popover-foreground: #102A2A;
+  --primary: #18796D;
+  --primary-foreground: #FFFFFF;
+  --secondary: #E8F4F1;
+  --secondary-foreground: #285B55;
+  --muted: #F4F7F5;
+  --muted-foreground: #60757A;
+  --accent: #E8F4F1;
+  --accent-foreground: #285B55;
+  --destructive: #C84A3A;
+  --border: #D8E1DF;
+  --input: #CBD8D5;
+  --ring: #18796D;
+  --chart-1: #1B8A7A;
+  --chart-2: #65B8AA;
+  --chart-3: #A9D8D0;
+  --chart-4: #8FA2A5;
+  --chart-5: #B78724;
+  --sidebar: #0B3430;
+  --sidebar-foreground: #C9D8D4;
+  --sidebar-primary: #18796D;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #164D45;
+  --sidebar-accent-foreground: #63D4C4;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #63D4C4;
+}
+
+/* Dark theme — deep clinical teal with the same brand accent, brightened
+   for contrast on dark surfaces. Sidebar tokens intentionally mirror :root
+   (the navigation rail is dark in both themes). */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.17 0.013 235);
+  --foreground: oklch(0.95 0.008 220);
+  --card: oklch(0.215 0.015 235);
+  --card-foreground: oklch(0.95 0.008 220);
+  --popover: oklch(0.225 0.016 235);
+  --popover-foreground: oklch(0.95 0.008 220);
+  --primary: oklch(0.72 0.11 184);
+  --primary-foreground: oklch(0.16 0.03 210);
+  --secondary: oklch(0.28 0.02 230);
+  --secondary-foreground: oklch(0.9 0.02 200);
+  --muted: oklch(0.26 0.014 235);
+  --muted-foreground: oklch(0.72 0.015 230);
+  --accent: oklch(0.27 0.025 220);
+  --accent-foreground: oklch(0.92 0.02 195);
+  --destructive: oklch(0.65 0.19 25);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 14%);
+  --ring: oklch(0.72 0.11 184);
+  --chart-1: oklch(0.72 0.11 184);
+  --chart-2: oklch(0.7 0.15 45);
+  --chart-3: oklch(0.6 0.08 230);
+  --chart-4: oklch(0.78 0.15 85);
+  --chart-5: oklch(0.7 0.15 30);
+  --sidebar: #0B3430;
+  --sidebar-foreground: #C9D8D4;
+  --sidebar-primary: #18796D;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #164D45;
+  --sidebar-accent-foreground: #63D4C4;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-ring: #63D4C4;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ── Hospital portal scrollbar styling ─────────────────────── */
+.hms-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.hms-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.hms-scroll::-webkit-scrollbar-thumb {
+  background: var(--hms-scroll-thumb);
+  border-radius: 999px;
+}
+.hms-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--hms-scroll-thumb-hover);
+}
+
+/* Login screen backdrop — enterprise deep green (#0B332D) with soft teal
+   glows and a faint clinical grid (dark mode: deepened further) */
+.dark .hms-login-backdrop {
+  background-color: #07211d;
+  background-image:
+    radial-gradient(ellipse 85% 55% at 20% 8%, rgb(24 124 112 / 0.32), transparent 62%),
+    radial-gradient(ellipse 70% 60% at 85% 92%, rgb(18 63 55 / 0.85), transparent 65%),
+    linear-gradient(rgb(255 255 255 / 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.028) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+}
+
+.hms-login-backdrop {
+  background-color: #0b332d;
+  background-image:
+    radial-gradient(ellipse 85% 55% at 20% 8%, rgb(24 124 112 / 0.3), transparent 62%),
+    radial-gradient(ellipse 70% 60% at 85% 92%, rgb(18 63 55 / 0.8), transparent 65%),
+    linear-gradient(rgb(255 255 255 / 0.032) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.032) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 36px 36px, 36px 36px;
+}
+
+/* Thin table row hover used across admin tables (theme-aware via :root/.dark) */
+.hms-row-hover:hover {
+  background-color: var(--hms-row-hover);
+}
+.dark {
+  --hms-row-hover: oklch(0.28 0.02 215);
+  --hms-scroll-thumb: oklch(0.38 0.02 230);
+  --hms-scroll-thumb-hover: oklch(0.48 0.03 225);
+}
